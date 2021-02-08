@@ -2,8 +2,6 @@
 
 import Control.Concurrent
 
--- may not need this - MVar (Either f p) seem sufficient, with empty ~ pending
-data PState = Pending | Fulfilled | Rejected deriving (Eq)
 
 data Promise :: * -> * -> * where
   MkPromise :: MVar (Either f p) -> Promise f p
@@ -23,13 +21,6 @@ reject :: f -> IO (Promise f p)
 reject x = newPromise (\_ f -> f x)
 
 
-{-
-pDone :: Promise f p -> IO ()
-pDone (MkPromise state) = do
-  result <- takeMVar state
-  case result of
-    Left _ -> undefined
--}
 
 pThen :: Promise f p -> (p -> IO p') -> IO (Promise f p')
 pThen pr@(MkPromise state) k = do
@@ -55,3 +46,4 @@ main = do
   promise2 <- pThen promise $ \p -> putStrLn "again?"
   pThen promise2 $ \p -> print p
   
+-- fmap, ap, bind for (Promise f)
