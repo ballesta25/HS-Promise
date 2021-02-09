@@ -4,38 +4,44 @@ import Control.Concurrent
 
 
 data Promise :: * -> * -> * where
-  MkPromise :: MVar (Either f p) -> Promise f p
-  -- pending ^, Fulfilled, Rejected, then resolve, reject don't need to be in IO
+  Pending :: MVar (Either f p) -> Promise f p
+  Fulfilled :: p -> Promise f p
+  Rejected :: f -> Promise f p
+
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
 newPromise k = do
   state <- newEmptyMVar
   forkIO $ k (putMVar state . Right) (putMVar state . Left)
-  return (MkPromise state)
+  return (Pending state)
 
-resolve :: p -> IO (Promise f p)
-resolve x = newPromise (\p _ -> p x)
+resolve :: p -> Promise f p
+resolve x = Fulfilled x
 
-reject :: f -> IO (Promise f p)
-reject x = newPromise (\_ f -> f x)
+reject :: f -> Promise f p
+reject x = Rejected x
 
 
 
 pThen :: Promise f p -> (p -> IO p') -> IO (Promise f p')
-pThen pr@(MkPromise state) k = do
+pThen pr@(Pending state) k = do
   result <- readMVar state
   case result of
-    Left x -> reject x
-    Right x -> k x >>= resolve
-  
+    Left x -> return $ reject x
+    Right x -> resolve <$> k x
+pThen (Fulfilled x) k = resolve <$> k x
+pThen (Rejected x)  k = return $ reject x
 
-pCatch :: Promise f p -> (f -> IO ()) -> IO ()
-pCatch (MkPromise state) k = do
+
+pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
+pCatch (Pending state) k = do
   result <- readMVar state
   case result of
-    Left x -> k x
-    Right _ -> return ()
+    Left x -> reject <$> k x
+    Right x -> return $ resolve x
+pCatch (Fulfilled x) k = return $ resolve x
+pCatch (Rejected x)  k = reject <$> k x
 
 
 main = do
