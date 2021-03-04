@@ -8,7 +8,8 @@ data Promise :: * -> * -> * where
   Fulfilled :: p -> Promise f p
   Rejected :: f -> Promise f p
   PromiseMap :: (a -> b) -> Promise f a -> Promise f b
-
+  PromiseMap2 ::  (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
+  PromiseJoin :: (Promise f (Promise f a)) -> Promise f a
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
@@ -35,6 +36,25 @@ pThen (Fulfilled x) k = resolve <$> k x
 pThen (Rejected x)  k = return $ reject x
 pThen (PromiseMap g pr) k = pThen pr (k . g)
 
+pThen' :: Promise f p
+        -> (p -> IO (Promise f p'))
+        -> IO (Promise f p')
+pThen' pr@(Pending state) k = do
+  result <- readMVar state
+  case result of
+    Left x -> pThen' (Rejected x) k
+    Right x -> pThen' (Fulfilled x) k
+pThen' (Fulfilled x) k = k x
+pThen' (Rejected x)  k = return $ reject x
+pThen' (PromiseMap g pr) k = pThen' pr (k . g)
+pThen' (PromiseMap2 g prA prB) k =
+  pThen' prA $ \a ->
+  pThen' prB $ \b ->
+                 k $ g a b
+pThen' (PromiseJoin pp) k = 
+  pThen' pp $ \p ->
+  pThen' p k
+  
 
 pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
 pCatch (Pending state) k = do
@@ -67,13 +87,19 @@ pCatch' (Pending state) k = do
 pCatch' (Fulfilled x) k = return $ resolve x
 pCatch' (Rejected x)  k = k x
 pCatch' (PromiseMap g pr) k = do
-  pr' <- bimapPromise pr id (Right . g)
-  caught <- pCatch' pr' (\y -> do pr'' <- k y
-                                  return $ PromiseMap Left pr'')
-  bimapPromise caught id (\z -> case z of
-                                  (Left a) -> a
-                                  (Right a) -> a)
-  
+  pr' <- bimapPromise pr id g
+  pCatch' pr' k
+pCatch' (PromiseMap2 g prA prB) k = do
+  pr' <- pThen' prA (\a ->
+    pThen' prB $ \b -> return $ resolve (g a b))
+  pCatch' pr' k
+pCatch' (PromiseJoin pp) k = do
+  p <- pJoin pp
+  pCatch' p k
+
+pJoin :: Promise f (Promise f p) -> IO (Promise f p)
+pJoin pp = pThen' pp return
+
 main = do
   promise <- newPromise $ \s f -> do
     threadDelay (2 * 1000 * 1000)
@@ -87,8 +113,19 @@ main = do
 instance Functor (Promise f) where
   fmap f pr = PromiseMap f pr
 
+instance Applicative (Promise f) where
+  pure x = resolve x
+  f <*> a = PromiseMap2 ($) f a
+
+instance Monad (Promise f) where
+  return = pure
+  p >>= k = PromiseJoin (fmap k p)
+
 pMap :: (a -> b) -> (Promise f a) -> IO (Promise f b)
 pMap f pr = pThen pr (return . f)
 
 pAp :: Promise f (a -> b) -> Promise f a -> IO (Promise f b)
 pAp f pr = undefined
+
+--pLift2 :: (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
+--pLift2 g prA prB
