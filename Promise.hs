@@ -42,22 +42,7 @@ pThen (PromiseMap g pr) k = pThen pr (k . g)
 pThen' :: Promise f p
         -> (p -> IO (Promise f p'))
         -> IO (Promise f p')
-pThen' pr@(Pending state) k = do
-  result <- readMVar state
-  case result of
-    Left x -> pThen' (Rejected x) k
-    Right x -> pThen' (Fulfilled x) k
-pThen' (Fulfilled x) k = k x
-pThen' (Rejected x)  k = return $ reject x
-pThen' (PromiseMap g pr) k = pThen' pr (k . g)
-pThen' (PromiseMap2 g prA prB) k =
-  pThen' prA $ \a ->
-  pThen' prB $ \b ->
-                 k $ g a b
-pThen' (PromiseJoin pp) k = 
-  pThen' pp $ \p ->
-  pThen' p k
---pThen' (PromiseInvert p) k = PromiseInvert <$> pCatch' p _
+pThen' p k = runPromise k (return . reject) p
 
 pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
 pCatch (Pending state) k = do
@@ -82,23 +67,7 @@ bimapPromise (PromiseMap h pr) f g = bimapPromise pr f (g . h)
 pCatch' :: Promise f p
         -> (f -> IO (Promise f' p))
         -> IO (Promise f' p)
-pCatch' (Pending state) k = do
-  result <- readMVar state
-  case result of
-    Left x -> k x
-    Right x -> return $ resolve x
-pCatch' (Fulfilled x) k = return $ resolve x
-pCatch' (Rejected x)  k = k x
-pCatch' (PromiseMap g pr) k = do
-  pr' <- bimapPromise pr id g
-  pCatch' pr' k
-pCatch' (PromiseMap2 g prA prB) k = do
-  pr' <- pThen' prA (\a ->
-    pThen' prB $ \b -> return $ resolve (g a b))
-  pCatch' pr' k
-pCatch' (PromiseJoin pp) k = do
-  p <- pJoin pp
-  pCatch' p k
+pCatch' p k = runPromise (return . resolve) k p
 
 pJoin :: Promise f (Promise f p) -> IO (Promise f p)
 pJoin pp = pThen' pp return
