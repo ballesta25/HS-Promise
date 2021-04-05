@@ -11,7 +11,7 @@ data Promise :: * -> * -> * where
   PromiseMap :: (a -> b) -> Promise f a -> Promise f b
   PromiseMap2 ::  (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
   PromiseJoin :: (Promise f (Promise f a)) -> Promise f a
-  PromiseInvert :: (Promise p f) -> Promise f p
+--  PromiseInvert :: (Promise p f) -> Promise f p
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
@@ -57,7 +57,7 @@ pThen' (PromiseMap2 g prA prB) k =
 pThen' (PromiseJoin pp) k = 
   pThen' pp $ \p ->
   pThen' p k
-pThen' (PromiseInvert p) k = PromiseInvert <$> pCatch' p _
+--pThen' (PromiseInvert p) k = PromiseInvert <$> pCatch' p _
 
 pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
 pCatch (Pending state) k = do
@@ -102,6 +102,26 @@ pCatch' (PromiseJoin pp) k = do
 
 pJoin :: Promise f (Promise f p) -> IO (Promise f p)
 pJoin pp = pThen' pp return
+
+
+runPromise :: (p -> IO a) -> (f -> IO a) -> Promise f p -> IO a
+runPromise yes no (Pending state) = do
+  result <- readMVar state
+  case result of
+    Left x -> no x
+    Right x -> yes x
+runPromise yes _ (Fulfilled x) = yes x
+runPromise _ no (Rejected x) = no x
+runPromise yes no (PromiseMap g pr) = do
+  pr' <- bimapPromise pr id g
+  runPromise yes no pr'
+runPromise yes no (PromiseMap2 g prA prB) = do
+  pr' <- pThen' prA $ \a ->
+    pThen' prB $ \b -> return $ resolve $ g a b
+  runPromise yes no pr'
+runPromise yes no (PromiseJoin pp) = do
+  p <- pJoin pp
+  runPromise yes no p
 
 -- invertPromise :: Promise f p -> Promise p f
 -- invertPromise (Fulfilled x) = Rejected x
