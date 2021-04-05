@@ -1,6 +1,7 @@
 {-# Language GADTs, KindSignatures #-}
 
 import Control.Concurrent
+import Control.Monad
 
 
 data Promise :: * -> * -> * where
@@ -10,6 +11,7 @@ data Promise :: * -> * -> * where
   PromiseMap :: (a -> b) -> Promise f a -> Promise f b
   PromiseMap2 ::  (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
   PromiseJoin :: (Promise f (Promise f a)) -> Promise f a
+  PromiseInvert :: (Promise p f) -> Promise f p
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
@@ -36,6 +38,7 @@ pThen (Fulfilled x) k = resolve <$> k x
 pThen (Rejected x)  k = return $ reject x
 pThen (PromiseMap g pr) k = pThen pr (k . g)
 
+
 pThen' :: Promise f p
         -> (p -> IO (Promise f p'))
         -> IO (Promise f p')
@@ -54,7 +57,7 @@ pThen' (PromiseMap2 g prA prB) k =
 pThen' (PromiseJoin pp) k = 
   pThen' pp $ \p ->
   pThen' p k
-  
+pThen' (PromiseInvert p) k = PromiseInvert <$> pCatch' p _
 
 pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
 pCatch (Pending state) k = do
@@ -99,6 +102,17 @@ pCatch' (PromiseJoin pp) k = do
 
 pJoin :: Promise f (Promise f p) -> IO (Promise f p)
 pJoin pp = pThen' pp return
+
+-- invertPromise :: Promise f p -> Promise p f
+-- invertPromise (Fulfilled x) = Rejected x
+-- invertPromise (Rejected x) = Fulfilled x
+-- invertPromise (Pending state) = 
+
+waitAny :: [Promise f p] -> Promise [f] p
+waitAny ps = undefined
+
+waitAll :: [Promise f p] -> Promise f [p]
+waitAll ps =  undefined --foldM (\x -> pThen' undefined) undefined ps
 
 main = do
   promise <- newPromise $ \s f -> do
