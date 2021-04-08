@@ -11,7 +11,7 @@ data Promise :: * -> * -> * where
   PromiseMap :: (a -> b) -> Promise f a -> Promise f b
   PromiseMap2 ::  (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
   PromiseJoin :: (Promise f (Promise f a)) -> Promise f a
---  PromiseInvert :: (Promise p f) -> Promise f p
+  PromiseInvert :: (Promise p f) -> Promise f p
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
@@ -91,11 +91,8 @@ runPromise yes no (PromiseMap2 g prA prB) = do
 runPromise yes no (PromiseJoin pp) = do
   p <- pJoin pp
   runPromise yes no p
+runPromise yes no (PromiseInvert pr) = runPromise no yes pr
 
--- invertPromise :: Promise f p -> Promise p f
--- invertPromise (Fulfilled x) = Rejected x
--- invertPromise (Rejected x) = Fulfilled x
--- invertPromise (Pending state) = 
 
 waitAny :: [Promise f p] -> Promise [f] p
 waitAny ps = undefined
