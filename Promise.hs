@@ -2,6 +2,7 @@
 
 import Control.Concurrent
 import Control.Monad
+import Data.Function
 
 
 data Promise :: * -> * -> * where
@@ -94,11 +95,21 @@ runPromise yes no (PromiseJoin pp) = do
 runPromise yes no (PromiseInvert pr) = runPromise no yes pr
 
 
+waitBoth :: Promise f p -> Promise f p' -> IO (Promise f (p, p'))
+waitBoth prA prB = runPromise
+  (\a -> runPromise (\b -> pure $ resolve (a,b)) (pure . reject) prB)
+  (pure . reject) prA
+
+waitAll :: [Promise f p] -> IO (Promise f [p])
+waitAll ps = undefined -- foldM _ _  ps --(\x -> pThen' undefined) undefined ps
+
+waitOne :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
+waitOne prA prB = fmap PromiseInvert (waitBoth (PromiseInvert prA) (PromiseInvert prB))  --fmap PromiseInvert . (waitBoth `on` PromiseInvert)
+
 waitAny :: [Promise f p] -> Promise [f] p
 waitAny ps = undefined
 
-waitAll :: [Promise f p] -> Promise f [p]
-waitAll ps =  undefined --foldM (\x -> pThen' undefined) undefined ps
+
 
 main = do
   promise <- newPromise $ \s f -> do
@@ -107,6 +118,14 @@ main = do
   pThen promise $ \p -> putStrLn p
   promise2 <- pThen promise $ \p -> putStrLn "again?"
   pThen (PromiseMap (\() -> 1234)promise2) $ \p -> print p
+
+testWait = (do
+               p1 <- newPromise $ \s f -> do
+                 threadDelay (3 * 1000 * 1000)
+                 s "finished"
+               p2 <- newPromise $ \s f -> s "pr 2"
+               waitOne p1 p2)
+           >>= runPromise putStrLn (putStrLn . const "both failed")
   
 
 -- fmap, ap, bind for (Promise f)
