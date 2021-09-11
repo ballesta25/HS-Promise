@@ -88,7 +88,20 @@ waitAll (x:xs) = do
 
 
 raceBoth :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
-raceBoth prA prB = fmap PromiseInvert (waitBoth (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (waitBoth `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
+-- impl adapted from http://conal.net/blog/posts/functional-concurrency-with-unambiguous-choice
+raceBoth prA prB = do v <- newEmptyMVar
+                      errA <- newEmptyMVar
+                      ta <- forkIO $ runPromise (putMVar v . Right) (putMVar errA) prA
+                      tb <- forkIO $ runPromise (putMVar v . Right)
+                            (\b -> do a <- takeMVar errA
+                                      putMVar v $ Left (a, b)) prB
+                      x <- takeMVar v
+                      killThread ta
+                      killThread tb
+                      return $ case x of
+                        Left (a, b) -> reject (a, b)
+                        Right p -> resolve p
+--raceBoth prA prB = fmap PromiseInvert (waitBoth (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (waitBoth `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
 
 raceAll :: [Promise f p] -> IO (Promise [f] p)
 raceAll [] = return $ reject []
