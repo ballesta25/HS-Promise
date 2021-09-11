@@ -28,32 +28,11 @@ reject :: f -> Promise f p
 reject x = Rejected x
 
 
-
-pThen :: Promise f p -> (p -> IO p') -> IO (Promise f p')
-pThen pr@(Pending state) k = do
-  result <- readMVar state
-  case result of
-    Left x -> return $ reject x
-    Right x -> resolve <$> k x
-pThen (Fulfilled x) k = resolve <$> k x
-pThen (Rejected x)  k = return $ reject x
-pThen (PromiseMap g pr) k = pThen pr (k . g)
-
-
-pThen' :: Promise f p
+pThen :: Promise f p
         -> (p -> IO (Promise f p'))
         -> IO (Promise f p')
-pThen' p k = runPromise k (return . reject) p
+pThen p k = runPromise k (return . reject) p
 
-pCatch :: Promise f p -> (f -> IO f') -> IO (Promise f' p)
-pCatch (Pending state) k = do
-  result <- readMVar state
-  case result of
-    Left x -> reject <$> k x
-    Right x -> return $ resolve x
-pCatch (Fulfilled x) k = return $ resolve x
-pCatch (Rejected x)  k = reject <$> k x
-pCatch (PromiseMap g pr) k = fmap g <$> pCatch pr k
 
 bimapPromise :: Promise f p -> (f -> f') -> (p -> p') -> IO (Promise f' p')
 bimapPromise (Pending state) f g = do
@@ -65,13 +44,13 @@ bimapPromise (Fulfilled x) f g = return $ resolve (g x)
 bimapPromise (Rejected x)  f g = return $ reject  (f x)
 bimapPromise (PromiseMap h pr) f g = bimapPromise pr f (g . h)
 
-pCatch' :: Promise f p
+pCatch :: Promise f p
         -> (f -> IO (Promise f' p))
         -> IO (Promise f' p)
-pCatch' p k = runPromise (return . resolve) k p
+pCatch p k = runPromise (return . resolve) k p
 
 pJoin :: Promise f (Promise f p) -> IO (Promise f p)
-pJoin pp = pThen' pp return
+pJoin pp = pThen pp return
 
 
 runPromise :: (p -> IO a) -> (f -> IO a) -> Promise f p -> IO a
@@ -86,8 +65,8 @@ runPromise yes no (PromiseMap g pr) = do
   pr' <- bimapPromise pr id g
   runPromise yes no pr'
 runPromise yes no (PromiseMap2 g prA prB) = do
-  pr' <- pThen' prA $ \a ->
-    pThen' prB $ \b -> return $ resolve $ g a b
+  pr' <- pThen prA $ \a ->
+    pThen prB $ \b -> return $ resolve $ g a b
   runPromise yes no pr'
 runPromise yes no (PromiseJoin pp) = do
   p <- pJoin pp
@@ -105,14 +84,18 @@ waitAll [] = return $ resolve []
 waitAll (x:xs) = do
   prs <- waitAll xs
   pr <- waitBoth x prs
-  pThen' pr (return . resolve . uncurry (:))
+  pThen pr (return . resolve . uncurry (:))
 
 
 raceBoth :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
 raceBoth prA prB = fmap PromiseInvert (waitBoth (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (waitBoth `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
 
 raceAll :: [Promise f p] -> IO (Promise [f] p)
-raceAll ps = undefined
+raceAll [] = return $ reject []
+raceAll (x:xs) = do
+  prs <- raceAll xs
+  pr <- raceBoth x prs
+  pCatch pr (return . reject . uncurry (:))
 
 
 
@@ -120,9 +103,9 @@ main = do
   promise <- newPromise $ \s f -> do
     threadDelay (2 * 1000 * 1000)
     s "promised."
-  pThen promise $ \p -> putStrLn p
-  promise2 <- pThen promise $ \p -> putStrLn "again?"
-  pThen (PromiseMap (\() -> 1234)promise2) $ \p -> print p
+  pThen promise $ \p -> return . resolve $ putStrLn p
+  promise2 <- pThen promise $ \p -> return . resolve $ putStrLn "again?"
+  pThen (PromiseMap (\_ -> 1234) promise2) $ \p -> return . resolve $ print p
 
 testWait = (do
                p1 <- newPromise $ \s f -> do
@@ -144,12 +127,3 @@ instance Applicative (Promise f) where
 instance Monad (Promise f) where
   return = pure
   p >>= k = PromiseJoin (fmap k p)
-
-pMap :: (a -> b) -> (Promise f a) -> IO (Promise f b)
-pMap f pr = pThen pr (return . f)
-
-pAp :: Promise f (a -> b) -> Promise f a -> IO (Promise f b)
-pAp f pr = undefined
-
---pLift2 :: (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
---pLift2 g prA prB

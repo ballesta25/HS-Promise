@@ -4,7 +4,7 @@
 \begin{document}
 
 \section{Introduction}
-One widely used model of concurrency is Javascript's Promises.  A promise works in some ways like a lazy value, in that it will at some point will contain the result of a computation, but does not stop flow of control in the current thread to compute that value.  Unlike a value with lazy semantics, a promise immediately begins computation in a separate thread as opposed to waiting for the result to be requested by some other computation.
+One widely used model of concurrency is Javascript's Promises.  A promise works in some ways like a lazy value, in that it will at some point will contain the result of a computation, but does not stop flow of control in the current thread to compute that value.  Unlike a value with lazy semantics, a promise can immediately begin computation in a separate thread as opposed to waiting for the result to be requested by some other computation.
 
 Promises are composable: using \lstinline{then} and \lstinline{catch}, we can chain a promise onto the end of a different one creating a new promise that continues computation after the first has succeeded or failed respectively.
 
