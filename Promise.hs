@@ -75,9 +75,8 @@ runPromise yes no (PromiseInvert pr) = runPromise no yes pr
 
 
 pAll2 :: Promise f p -> Promise f p' -> IO (Promise f (p, p'))
-pAll2 prA prB = runPromise
-  (\a -> runPromise (\b -> pure $ resolve (a,b)) (pure . reject) prB)
-  (pure . reject) prA
+pAll2 prA prB = fmap PromiseInvert (pAny2 (PromiseInvert prA) (PromiseInvert prB))
+
 
 pAll :: [Promise f p] -> IO (Promise f [p])
 pAll [] = return $ resolve []
@@ -90,17 +89,17 @@ pAll (x:xs) = do
 pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
 -- impl adapted from http://conal.net/blog/posts/functional-concurrency-with-unambiguous-choice
 pAny2 prA prB = do v <- newEmptyMVar
-                      errA <- newEmptyMVar
-                      ta <- forkIO $ runPromise (putMVar v . Right) (putMVar errA) prA
-                      tb <- forkIO $ runPromise (putMVar v . Right)
-                            (\b -> do a <- takeMVar errA
-                                      putMVar v $ Left (a, b)) prB
-                      x <- takeMVar v
-                      killThread ta
-                      killThread tb
-                      return $ case x of
-                        Left (a, b) -> reject (a, b)
-                        Right p -> resolve p
+                   errA <- newEmptyMVar
+                   ta <- forkIO $ runPromise (putMVar v . Right) (putMVar errA) prA
+                   tb <- forkIO $ runPromise (putMVar v . Right)
+                         (\b -> do a <- takeMVar errA
+                                   putMVar v $ Left (a, b)) prB
+                   x <- takeMVar v
+                   killThread ta
+                   killThread tb
+                   return $ case x of
+                              Left (a, b) -> reject (a, b)
+                              Right p -> resolve p
 --pAny2 prA prB = fmap PromiseInvert (pAll2 (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (pAll2 `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
 
 pAny :: [Promise f p] -> IO (Promise [f] p)
