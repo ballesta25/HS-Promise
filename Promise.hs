@@ -109,6 +109,27 @@ pAny (x:xs) = do
   pr <- pAny2 x prs
   pCatch pr (return . reject . uncurry (:))
 
+pAllSettled :: [Promise f p] -> IO [Either f p]
+pAllSettled = mapM $ runPromise (return . Right) (return . Left)
+
+pRace2 :: Promise f p -> Promise f p -> IO (Promise f p)
+pRace2 prA prB = do v <- newEmptyMVar
+                    ta <- forkIO $ runPromise (putMVar v . Right) (putMVar v . Left) prA
+                    tb <- forkIO $ runPromise (putMVar v . Right) (putMVar v . Left) prB
+                    x <- takeMVar v
+                    killThread ta
+                    killThread tb
+                    return $ case x of
+                               Left f -> reject f
+                               Right p -> resolve p
+
+pRace :: [Promise f p] -> IO (Promise f p)
+pRace [] = error "Can't race zero promises."
+pRace [pr] = return pr
+pRace (x:xs) = do
+  prs <- pRace xs
+  pRace2 x prs
+  
 
 
 main = do
