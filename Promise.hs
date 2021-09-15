@@ -49,6 +49,11 @@ pCatch :: Promise f p
         -> IO (Promise f' p)
 pCatch p k = runPromise (return . resolve) k p
 
+pFinally :: Promise f p
+         -> IO (Promise f' p')
+         -> IO (Promise f' p')
+pFinally p k = runPromise (const k) (const k) p
+
 pJoin :: Promise f (Promise f p) -> IO (Promise f p)
 pJoin pp = pThen pp return
 
@@ -129,7 +134,6 @@ pRace [pr] = return pr
 pRace (x:xs) = do
   prs <- pRace xs
   pRace2 x prs
-  
 
 
 main = do
