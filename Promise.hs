@@ -74,22 +74,22 @@ runPromise yes no (PromiseJoin pp) = do
 runPromise yes no (PromiseInvert pr) = runPromise no yes pr
 
 
-waitBoth :: Promise f p -> Promise f p' -> IO (Promise f (p, p'))
-waitBoth prA prB = runPromise
+pAll2 :: Promise f p -> Promise f p' -> IO (Promise f (p, p'))
+pAll2 prA prB = runPromise
   (\a -> runPromise (\b -> pure $ resolve (a,b)) (pure . reject) prB)
   (pure . reject) prA
 
-waitAll :: [Promise f p] -> IO (Promise f [p])
-waitAll [] = return $ resolve []
-waitAll (x:xs) = do
-  prs <- waitAll xs
-  pr <- waitBoth x prs
+pAll :: [Promise f p] -> IO (Promise f [p])
+pAll [] = return $ resolve []
+pAll (x:xs) = do
+  prs <- pAll xs
+  pr <- pAll2 x prs
   pThen pr (return . resolve . uncurry (:))
 
 
-raceBoth :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
+pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)
 -- impl adapted from http://conal.net/blog/posts/functional-concurrency-with-unambiguous-choice
-raceBoth prA prB = do v <- newEmptyMVar
+pAny2 prA prB = do v <- newEmptyMVar
                       errA <- newEmptyMVar
                       ta <- forkIO $ runPromise (putMVar v . Right) (putMVar errA) prA
                       tb <- forkIO $ runPromise (putMVar v . Right)
@@ -101,13 +101,13 @@ raceBoth prA prB = do v <- newEmptyMVar
                       return $ case x of
                         Left (a, b) -> reject (a, b)
                         Right p -> resolve p
---raceBoth prA prB = fmap PromiseInvert (waitBoth (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (waitBoth `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
+--pAny2 prA prB = fmap PromiseInvert (pAll2 (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (pAll2 `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
 
-raceAll :: [Promise f p] -> IO (Promise [f] p)
-raceAll [] = return $ reject []
-raceAll (x:xs) = do
-  prs <- raceAll xs
-  pr <- raceBoth x prs
+pAny :: [Promise f p] -> IO (Promise [f] p)
+pAny [] = return $ reject []
+pAny (x:xs) = do
+  prs <- pAny xs
+  pr <- pAny2 x prs
   pCatch pr (return . reject . uncurry (:))
 
 
@@ -125,7 +125,7 @@ testWait = (do
                  threadDelay (3 * 1000 * 1000)
                  s "finished"
                p2 <- newPromise $ \s f -> s "pr 2"
-               raceBoth p1 p2)
+               pAny2 p1 p2)
            >>= runPromise putStrLn (putStrLn . const "both failed")
   
 
