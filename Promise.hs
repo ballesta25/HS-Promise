@@ -129,8 +129,7 @@ pRace2 prA prB = do v <- newEmptyMVar
                                Right p -> resolve p
 
 pRace :: [Promise f p] -> IO (Promise f p)
-pRace [] = error "Can't race zero promises."
-pRace [pr] = return pr
+pRace [] = newPromise (\f s -> return ()) -- remain Pending forever by never calling either the success handler or the failure handler
 pRace (x:xs) = do
   prs <- pRace xs
   pRace2 x prs
