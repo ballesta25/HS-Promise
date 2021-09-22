@@ -17,10 +17,26 @@ Promise objects are a good candidate for parameterized types: they yield a value
 The operation \lstinline{then} should ``chain promises together'' by accepting a function that converts a regular value to a promise, then applying it to a promise with that return type by waiting for it to finish before calling the function.  We note that this operation is very similar to \lstinline{>>=} [give type signature here?], suggesting that promises can be thought of as monads.  (We also note that it is trivial to wrap an arbitrary value into a promise so \lstinline{return} poses no problem.  In practice, we define a separate constructor for this case to avoid forking off an entire new thread to do no computation and hand back the same result immediately.)
 \section{Haskell Implementation}
 
-[implementation of JS's Promise.any(iterable)] Javascript's promise API provides \lstinline{.any(iterable)} which combines any number of promises by executing each simultaneously.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.
+[core bits]
+
+[then and catch]
+
+[runpromise as helper function]
+
+[ Functor, Applicative, Monad instances; addition to the type so they don't need to be in IO]
+
+The Javascript standard library has several ways to combine promises in parallel in addition to the sequential combination provided by \lstinline{then} and \lstinline{catch}.
+
+[first describe implementation for pRace2 - it's simpler]
+
+[implementation of JS's Promise.any(iterable)] Javascript's promise API provides \lstinline{.any(iterable)} which combines any number of promises by executing each simultaneously.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.  To implement this, let's start with a binary version that combines exactly two promises in this way.  [ type signature \lstinline{ pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)} ]
 
 \section{Comparison with Existing Concurrency Frameworks}
 [Compare to push-pull frp]
 [locks]
+
+\section{Future Work}
+
+[decouple Promise monad from IO ?]
 
 \end{document}
