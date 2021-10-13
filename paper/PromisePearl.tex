@@ -1,12 +1,14 @@
 \documentclass[sigplan,screen,review]{acmart}
 \usepackage{listings}
 
+\newcommand{\lit}[1]{\lstinline{#1}}
+
 \begin{document}
 
 \section{Introduction}
 One widely used model of concurrency is Javascript's Promises.  A promise works in some ways like a lazy value, in that it will at some point will contain the result of a computation, but does not stop flow of control in the current thread to compute that value.  Unlike a value with lazy semantics, a promise can immediately begin computation in a separate thread as opposed to waiting for the result to be requested by some other computation.
 
-Promises are composable: using \lstinline{then} and \lstinline{catch}, we can chain a promise onto the end of a different one creating a new promise that continues computation after the first has succeeded or failed respectively.
+Promises are composable: using \lit{then} and \lit{catch}, we can chain a promise onto the end of a different one creating a new promise that continues computation after the first has succeeded or failed respectively.
 
 We build a model of promises in Haskell to compare it against other concurrency frameworks.
 \section{Motivation}
@@ -14,8 +16,10 @@ We build a model of promises in Haskell to compare it against other concurrency 
 
 Promise objects are a good candidate for parameterized types: they yield a value upon success or failure, and it would be nice to be able to check statically that these values and the functions that they will be passed to all agree on the types involved.
 
-The operation \lstinline{then} should ``chain promises together'' by accepting a function that converts a regular value to a promise, then applying it to a promise with that return type by waiting for it to finish before calling the function.  We note that this operation is very similar to \lstinline{>>=} [give type signature here?], suggesting that promises can be thought of as monads.  (We also note that it is trivial to wrap an arbitrary value into a promise so \lstinline{return} poses no problem.  In practice, we define a separate constructor for this case to avoid forking off an entire new thread to do no computation and hand back the same result immediately.)
+The operation \lit{then} should ``chain promises together'' by accepting a function that converts a regular value to a promise, then applying it to a promise with that return type by waiting for it to finish before calling the function.  We note that this operation is very similar to \lit{>>=} [give type signature here?], suggesting that promises can be thought of as monads.  (We also note that it is trivial to wrap an arbitrary value into a promise so \lit{return} poses no problem.  In practice, we define a separate constructor for this case to avoid forking off an entire new thread to do no computation and hand back the same result immediately.)
 \section{Haskell Implementation}
+
+[description of MVar]
 
 [core bits]
 
@@ -25,11 +29,18 @@ The operation \lstinline{then} should ``chain promises together'' by accepting a
 
 [ Functor, Applicative, Monad instances; addition to the type so they don't need to be in IO]
 
-The Javascript standard library has several ways to combine promises in parallel in addition to the sequential combination provided by \lstinline{then} and \lstinline{catch}.
+The Javascript standard library has several ways to combine promises in parallel in addition to the sequential combination provided by \lit{then} and \lit{catch}.
 
 [first describe implementation for pRace2 - it's simpler]
+[JS provides \lit{Promise.race(iterable)}], which runs all of the input promises simultaneously in different threads, settling with the result of whichever completes first.  In our system this should have type signature \lit{pRace :: [Promise f p] -> IO (Promise f p)}.  To implement this function, let's begin with a binary variant that works for exactly two promises.  \lit{pRace2 :: Promise f p -> Promise f p -> IO (Promise f p)}.  [similar to \lit {amb} from [cite Push-Pull FRP]]  We can use an \lit{MVar} to accept a result from the first thread to finish.  Since we must differentiate between whether the result is a success or failure, we want the \lit{MVar} to hold an {Either f p}.  We create an empty MVar, then fork off a pair of threads, each of which runs one of the input promises and writes the result to the MVar.  Next, \lit{takeMVar} waits for either thread to finish and give it a result, after which we can kill both threads since they are no longer needed.
+[insert pRace2 code here]
 
-[implementation of JS's Promise.any(iterable)] Javascript's promise API provides \lstinline{.any(iterable)} which combines any number of promises by executing each simultaneously.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.  To implement this, let's start with a binary version that combines exactly two promises in this way.  [ type signature \lstinline{ pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)} ]
+The n-ary version of \lit{pRace} operates by a sort of monadic fold over the list of input promises: we \lit{pRace2} the first promise in the list against the result of \lit{pRace}ing the rest of the list, with the result that we will settle to whichever out of any of the inputs settles first.  The Javascript standard specifies that \lit{race()}ing an empty iterable returns a forever-pending promise that never resolves or rejects.  This is convenient for our implementation because such a promise is the identity for \lit{pRace2} so we can use it directly as the base case to our fold.  We can generate an eternally pending promise by passing \lit{newPromise} a function that fails to call either the success or failure handle, like so: \verb|newPromise (\f s -> return ())|, so the final \lit{pRace} function is as follows:
+[...]
+
+[implementation of JS's Promise.any(iterable)] Javascript's promise API also provides \lit{.any(iterable)} which combines any number of promises by executing each simultaneously.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.  To implement this, let's again start with a binary version that combines exactly two promises in this way.  [ type signature \lit{ pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)} ] [Note that this type signature is slightly more general than will be allowed by the n-ary version; in particular, the failure types of the two Promises can be different here, where in \lit{pAny} they will need to be the same so they can be contained in the same Haskell list.]  We still need an MVar to store the value of a success from either promise A or promise B, but dealing with a failure is somewhat more complicated since one failure isn't enough to end the computation, but we still need to track it so that we know to end if both branches end in failure. [need communication between the forked threads that doesn't interfere with the MVar holding successful results, => second MVar that the main thread doesn't touch at all.  One fork writes to the error MVar, while the other waits to read from it after completion.]
+
+[\lit{pAll2} and \lit{pAll} are dual to \lit{pAny2} and \lit{pAny}; we can implement by using \lit{PromiseInvert} to switch the true and false cases of the input promises, then switching back after running them through the dual function.]
 
 \section{Comparison with Existing Concurrency Frameworks}
 [Compare to push-pull frp]
