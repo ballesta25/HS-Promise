@@ -3,6 +3,7 @@
 import Control.Concurrent
 import Control.Monad
 import Data.Function
+import Data.Void
 
 
 data Promise :: * -> * -> * where
@@ -15,10 +16,10 @@ data Promise :: * -> * -> * where
   PromiseInvert :: (Promise p f) -> Promise f p
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
-newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
+newPromise :: ((p -> IO Void) -> (f -> IO Void) -> IO Void) -> IO (Promise f p)
 newPromise k = do
   state <- newEmptyMVar
-  forkIO $ k (putMVar state . Right) (putMVar state . Left)
+  forkIO $ vacuous $ k (fmap (const undefined) . putMVar state . Right) (fmap (const undefined) . putMVar state . Left)
   return (Pending state)
 
 resolve :: p -> Promise f p
@@ -129,7 +130,7 @@ pRace2 prA prB = do v <- newEmptyMVar
                                Right p -> resolve p
 
 pRace :: [Promise f p] -> IO (Promise f p)
-pRace [] = newPromise (\s f -> return ()) -- remain Pending forever by never calling either the success handler or the failure handler
+pRace [] = newPromise (\s f -> return undefined) -- remain Pending forever by never calling either the success handler or the failure handler
 pRace (x:xs) = do
   prs <- pRace xs
   pRace2 x prs
