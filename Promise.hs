@@ -37,14 +37,7 @@ pThen p k = runPromise k (return . reject) p
 
 
 bimapPromise :: Promise f p -> (f -> f') -> (p -> p') -> IO (Promise f' p')
-bimapPromise (Pending state) f g = do
-  result <- readMVar state
-  case result of
-    Left x -> return $ reject (f x)
-    Right x -> return $ resolve (g x)
-bimapPromise (Fulfilled x) f g = return $ resolve (g x)
-bimapPromise (Rejected x)  f g = return $ reject  (f x)
-bimapPromise (PromiseMap h pr) f g = bimapPromise pr f (g . h)
+bimapPromise pr f g = runPromise (return . resolve . g) (return . reject . f) pr
 
 pCatch :: Promise f p
         -> (f -> IO (Promise f' p))
