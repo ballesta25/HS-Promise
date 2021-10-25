@@ -17,11 +17,14 @@ data Promise :: * -> * -> * where
   PromiseInvert :: (Promise p f) -> Promise f p
 
 --newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
-newPromise :: ((p -> IO Void) -> (f -> IO Void) -> IO Void) -> IO (Promise f p)
+newPromise :: ((p -> IO Token) -> (f -> IO Token) -> IO Token) -> IO (Promise f p)
 newPromise k = do
   state <- newEmptyMVar
-  forkIO $ vacuous $ k (fmap (const undefined) . putMVar state . Right) (fmap (const undefined) . putMVar state . Left)
+  forkIO $ fmap (const ()) $ k (fmap (const MkToken) . putMVar state . Right) (fmap (const MkToken) . putMVar state . Left)
   return (Pending state)
+
+-- do not export the constructor; outside this module you only get one by calling a promise callback
+data Token = MkToken
 
 resolve :: p -> Promise f p
 resolve x = Fulfilled x
@@ -124,7 +127,7 @@ pRace2 prA prB = do v <- newEmptyMVar
                                Right p -> resolve p
 
 pRace :: [Promise f p] -> IO (Promise f p)
-pRace [] = newPromise (\s f -> return undefined) -- remain Pending forever by never calling either the success handler or the failure handler
+pRace [] = newPromise (\s f -> return MkToken) -- remain Pending forever by never calling either the success handler or the failure handler
 pRace (x:xs) = do
   prs <- pRace xs
   pRace2 x prs
