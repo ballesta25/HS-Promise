@@ -32,7 +32,6 @@ resolve x = Fulfilled x
 reject :: f -> Promise f p
 reject x = Rejected x
 
-
 pThen :: Promise f p
         -> (p -> IO (Promise f p'))
         -> IO (Promise f p')
@@ -75,6 +74,9 @@ runPromise yes no (PromiseJoin pp) = do
   p <- pJoin pp
   runPromise yes no p
 runPromise yes no (PromiseInvert pr) = runPromise no yes pr
+
+await :: Promise f p -> IO  (Either p f)
+await = runPromise (return . Right) (return . Left)
 
 
 pAll2 :: Promise f p -> Promise f p' -> IO (Promise f (p, p'))
