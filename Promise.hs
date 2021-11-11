@@ -75,7 +75,7 @@ runPromise yes no (PromiseJoin pp) = do
   runPromise yes no p
 runPromise yes no (PromiseInvert pr) = runPromise no yes pr
 
-await :: Promise f p -> IO  (Either p f)
+await :: Promise f p -> IO  (Either f p)
 await = runPromise (return . Right) (return . Left)
 
 
