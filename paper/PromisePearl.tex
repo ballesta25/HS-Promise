@@ -1,10 +1,14 @@
 \documentclass[sigplan,screen]{acmart}
 \usepackage{listings}
-\usepackage{verbatim}
+\usepackage{fancyvrb}
 
 \newcommand{\lit}[1]{\lstinline{#1}}
 
-\newenvironment{code}{\verbatim}{\endverbatim}
+\DefineVerbatimEnvironment{code}{Verbatim}{}
+%\newenvironment{code}{\Verbatim}{\endVerbatim}
+
+\title{Promise Land}
+\author{Andrei Elliott}
 
 \begin{document}
 
@@ -20,22 +24,52 @@ We build a model of promises in Haskell to compare it against other concurrency 
 Promise objects are a good candidate for parameterized types: they yield a value upon success or failure, and it would be nice to be able to check statically that these values and the functions that they will be passed to all agree on the types involved.
 
 The operation \lit{then} should ``chain promises together'' by accepting a function that converts a regular value to a promise, then applying it to a promise with that return type by waiting for it to finish before calling the function.  We note that this operation is very similar to \lit{>>=} [give type signature here?], suggesting that promises can be thought of as monads.  (We also note that it is trivial to wrap an arbitrary value into a promise so \lit{return} poses no problem.  In practice, we define a separate constructor for this case to avoid forking off an entire new thread to do no computation and hand back the same result immediately.)
+
+\section{Background}
+[description of MVar]
+[maybe discuss GADTs briefly ?]
+
+[Terminology for discussing promises: states \emph{pending, fulfilled, rejected}; resolve means pending -> fulfilled, reject - pending -> rejected, settle - pending -> <either>; define promise chain; Promises here $\neq$ lazy values, despite terminology clash w/ e.g. Scheme]
+
 \section{Haskell Implementation}
 
-[description of MVar (maybe should go in Background?)]
-
 [core bits]
-Javascript's \lit{Promise()} constructor builds a new promise object from an `executor' function.  The executor accecpts two callback functions the standard names resolutionFunc and rejectionFunc, one to call in the case of successful resolution and the other for failure.  The executor will, on a success/failure, call resolutionFunc/rejectionFunc, repectively, passing in the value or reason for the success or failure.  Let's assume we want a promise with type \lit{Promise f p}, i.e. one where success results in a value of type \lit p and failure gives a reason with type \lit f.  To build one, \lit{resolutionFunc} will need to accept a value of type \lit p.  Since calling \lit{resolutionFunc} will settle the promise and therefore have effects elsewhere in the promise chain, its return type will have to be something wrapped in \lit{IO}, so we know \lit{resolutionFunc :: p -> IO ?}.  Similarly, \lit{rejectionFunc} must accept a \lit f, and calling it will also settle the promise, so \lit{rejectionFunc :: f -> IO ?}.  The executor function should accept \lit{resolutionFunc} and \lit{rejectionFunc} as parameters and is expected to end by calling exactly one of them, so we will expect it to have a proper tail call to one of the parameters.  This means its return type matches that of \lit{resolutionFunc} and \lit{rejectionFunc}, i.e. \lit{executor :: (p -> IO ?) -> (p -> IO ?) -> IO ?} and the \lit ?s for the two callbacks should be the same type.  [For now, let's use \lit{()} as \lit ?, so that the callbacks have a return type of \lit{IO ()}, the conventional Haskell type for \lit{IO} actions that have an effect (here, setting the Promise from \lit{Pending} state to one of the settled states) instead of containing a useful value.]  Our function for building a \lit{Promise} object needs to accept a function with the type of \lit{executor} and give back a \lit{Promise} value, which must be contained in \lit{IO} because it has the side effect of running the \lit{executor} in another thread.  It thus has the type \lit{newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)}.  We can represent a \lit{Promise f p} by an \lit{MVar (Either f p)}.  Once the computation for the \lit{Promise} is complete, it can be written to with an \lit{Either f p} value, i.e. \lit{Left reason} for a failure or \lit{Right result} in the case of success.  \lit{newPromise} will also need to fork a thread that will run the executor and set up communication so that the final \lit{Promise} object will be updated with the results once they are available.  In total, we need to: create an \lit{MVar} which we'll call \lit{state}, then fork a thread that calls the executor, passing it callback functions that write the results to \lit{state}, and finally, return \lit{state} as a \lit{Promise} value.
+Javascript's \lit{Promise()} constructor builds a new promise object from an `executor' function.  The executor accecpts two callback functions the standard names resolutionFunc and rejectionFunc, one to call in the case of successful resolution and the other for failure.  The executor will, on a success/failure, call resolutionFunc/rejectionFunc, repectively, passing in the value of or reason for the success or failure.  Let's assume we want a promise with type \lit{Promise f p}, i.e. one where success results in a value of type \lit p and failure gives a reason with type \lit f.  To build one, \lit{resolutionFunc} will need to accept a value of type \lit p.  Since calling \lit{resolutionFunc} will settle the promise and therefore have effects elsewhere in the promise chain, its return type will have to be something wrapped in \lit{IO}, so we know \lit{resolutionFunc :: p -> IO ?}.  Similarly, \lit{rejectionFunc} must accept a \lit f, and calling it will also settle the promise, so \lit{rejectionFunc :: f -> IO ?}.  The executor function should accept \lit{resolutionFunc} and \lit{rejectionFunc} as parameters and is expected to end by calling exactly one of them, so we will expect it to have a proper tail call to one of the parameters.  This means its return type matches that of \lit{resolutionFunc} and \lit{rejectionFunc}, i.e. \lit{executor :: (p -> IO ?) -> (p -> IO ?) -> IO ?} and the \lit ?s for the two callbacks should be the same type.  [For now, let's use \lit{()} as \lit ?, so that the callbacks have a return type of \lit{IO ()}, the conventional Haskell type for \lit{IO} actions that have an effect (here, setting the Promise from \lit{Pending} state to one of the settled states) instead of containing a useful value.]  Our function for building a \lit{Promise} object needs to accept a function with the type of \lit{executor} and give back a \lit{Promise} value, which must be contained in \lit{IO} because it has the side effect of running the \lit{executor} in another thread.  It thus has the type \lit{newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)}.  We can represent a \lit{Promise f p} by an \lit{MVar (Either f p)}.  Once the computation for the \lit{Promise} is complete, it can be written to with an \lit{Either f p} value, i.e. \lit{Left reason} for a failure or \lit{Right result} in the case of success.  \lit{newPromise} will also need to fork a thread that will run the executor and set up communication so that the final \lit{Promise} object will be updated with the results once they are available.  In total, we need to: create an \lit{MVar} which we'll call \lit{state}, then fork a thread that calls the executor, passing it callback functions that write the results to \lit{state}, and finally, return \lit{state} as a \lit{Promise} value.
 \begin{code}
 newPromise :: ((p -> IO ()) -> (f -> IO ()) -> IO ()) -> IO (Promise f p)
 newPromise k = do
   state <- newEmptyMVar
   forkIO $ k (putMVar state . Right) (putMVar state . Left)
   return (Pending state)
-\end{code} %$
-[side note: could use \lit{Void} as \lit ? instead of \lit{()} - this would cause the compiler to check that at least one of the callbacks is used]
+\end{code}
+% $
+Since the constructor here is used to create \lit{Promise}s that are in the \emph{pending} state, we'll call it \lit{Pending}.  We could, in principle, use this same constructor to build \lit{Promise} values that we know have already succeeded or failed.  To get a promise that always succeeds with a value of \lit s, say, simply call \lit{newPromise} with an executor that immediately calls \lit{successFunc}, like so:
+\begin{code}
+newPromise (\ succeed fail -> succeed s)
+\end{code}
+This is inefficient, though, because it spawns an entire new thread in order to do absolutely nothing with it.  Instead, it is easy enough to define a constructor that marks a value as known to be the result of a sucessful computation (and a parallel one declaring a value to be the known reason for a failed computation).  These correspond to the promise being in the state \emph{fulfilled} or \emph{rejected}, repectively, so we will uses those terms as the names the constructors.  At this point, the \lit{Promise} type has the following form [(in GADT syntax)]:
+\begin{code}
+data Promise :: * -> * -> * where
+  Pending :: MVar (Either f p) -> Promise f p
+  Fulfilled :: p -> Promise f p
+  Rejected :: f -> Promise f p
+\end{code}
+[side note: could use \lit{Void} as \lit ? instead of \lit{()} - this would cause the compiler to check that at least one of the callbacks is used - reworked into Token type with non exported constuctor; maybe provide \lit{hangForever :: Token} (or \lit{IO Token})so it can be used but can't be accidental?]
+
 
 [then and catch]
+Now that we can create \lit{Promise} values, the next step is to allow them to chain together.  Javascript's \lit{Promise.then()} is used to set a handler function to run after a promise completes.  Specifically, \lit{p1.then(f)} results in a new promise that will wait for the \lit{Promise} \lit{p1} to complete.  If \lit{p1} succeeds and resolves to a value \lit v, it will then call \lit{f(v)}.  The result of running the callback should be another \lit{Promise}, \lit{p2}; when it settles, the new \lit{Promise} will also settle, to the same state and value.
+[JS also allows the callback to return a non-\lit{Promise} value, in which case \lit{p1.then(f)} resolves to that value as soon as it's computed.  We won't implement this functionality directly
+(allowing differeng argument types would not work in Haskell's type system unless we made separate \lit{then} functions for the two variants).  However, we get to the same result by enclosing the value we would like to return in an always-successful \lit{Promise}.  Once we define a monad instance for \lit{Promise f}, we can even do so by writing \lit{return v} where \lit{v} is the value for the final promise to resolve to, which should look familiar to anyone used to the Javascript syntax!]
+In our system in Haskell, \lit{pThen} accepts \lit{pr}, a \lit{Promise f p} along with a callback that expects a value type \lit p, the type contained in a sucessful \lit{Promise f p}.  \lit{pThen} will return a \lit{Promise} (in \lit{IO} because [blah blah asynchronous], which must have the same failure type as \lit{pr} because if \lit{pr} is Rejected, the result will be as well, with the same value.  The result type can have a different sucess type, though, so it's overall type is \lit{IO (Promise f p')}.  The callback returns a new \lit{Promise} in IO, which must match \lit{pThen}'s return type, so in total
+\begin{code}
+pThen :: Promise f p
+        -> (p -> IO (Promise f p'))
+        -> IO (Promise f p')
+      \end{code}
+[implementation without runPromise, for only the Pending, Fulfilled, Rejected constructors.]
+ [Note that the type signature for \lit{pThen} looks extremely similar to the type \lit{(>>=)} would have if it were to be specialized to \lit{Promise f} (\lit{(>>=) :: Promise f a -> (a -> Promise f b) -> Promise f b}).  The difference is that \lit{pThen} is entangled in the \lit{IO} monad.]
+\lit{Promise.catch()} works the same way as \lit{.then()} except that the handler is set to run only if and when the \lit{Promise} it is being chained to fails, rather then when it succeeds.  
 
 [runpromise as helper function]
 
