@@ -26,7 +26,9 @@ Promise objects are a good candidate for parameterized types: they yield a value
 The operation \lit{then} should ``chain promises together'' by accepting a function that converts a regular value to a promise, then applying it to a promise with that return type by waiting for it to finish before calling the function.  We note that this operation is very similar to \lit{>>=} [give type signature here?], suggesting that promises can be thought of as monads.  (We also note that it is trivial to wrap an arbitrary value into a promise so \lit{return} poses no problem.  In practice, we define a separate constructor for this case to avoid forking off an entire new thread to do no computation and hand back the same result immediately.)
 
 \section{Background}
-[description of MVar]
+[HS type signature syntax - mention here that I'm using \lit ? in type signatures I'm discussing as a metavariable, not real syntax?]
+[IO monad, do notation]
+[forkIO, description of MVar]
 [maybe discuss GADTs briefly ?]
 
 [Terminology for discussing promises: states \emph{pending, fulfilled, rejected}; resolve means pending -> fulfilled, reject - pending -> rejected, settle - pending -> <either>; define promise chain; Promises here $\neq$ lazy values, despite terminology clash w/ e.g. Scheme]
@@ -66,14 +68,58 @@ In our system in Haskell, \lit{pThen} accepts \lit{pr}, a \lit{Promise f p} alon
 pThen :: Promise f p
         -> (p -> IO (Promise f p'))
         -> IO (Promise f p')
-      \end{code}
+\end{code}
 [implementation without runPromise, for only the Pending, Fulfilled, Rejected constructors.]
+\begin{code}
+pThen (Pending state) k = do
+  result <- readMVar state
+  case result of
+    Left x -> return $ reject x
+    Right x -> k x
+pThen (Fulfilled x) k = k x
+pThen (Rejected x) k = return $ reject x
+\end{code}
+      
  [Note that the type signature for \lit{pThen} looks extremely similar to the type \lit{(>>=)} would have if it were to be specialized to \lit{Promise f} (\lit{(>>=) :: Promise f a -> (a -> Promise f b) -> Promise f b}).  The difference is that \lit{pThen} is entangled in the \lit{IO} monad.]
-\lit{Promise.catch()} works the same way as \lit{.then()} except that the handler is set to run only if and when the \lit{Promise} it is being chained to fails, rather then when it succeeds.  
+ \lit{Promise.catch()} works the same way as \lit{.then()} except that the handler is set to run only if and when the \lit{Promise} it is being chained to fails, rather then when it succeeds.  Our translation to Haskell, \lit{pCatch}, is very much like \lit{pThen} except that the code for a failed promise and a successful one have swapped places.  Its type is
+ \begin{code}
+pCatch :: Promise f p
+        -> (f -> IO (Promise f' p))
+        -> IO (Promise f' p)
+\end{code}
+which is the same as that for \lit{pThen} except that it operates on the type \lit f, the type of failure cases, instead of \lit p, the type of success cases. [Implementation. ]
+\begin{code}
+pCatch (Pending state) k = do
+  result <- readMVar state
+  case result of
+    Left x -> k x
+    Right x -> return $ resolve x
+pCatch (Fulfilled x) k = return $ resolve x
+pCatch (Rejected x) k = k x
+\end{code}
+\lit{pCatch} is dual to \lit{pThen} in that it is identical to a \lit{pThen} that operates on \lit{Promise}s with reversed semantics for which type argument represents success and which failure.
 
 [runpromise as helper function]
+\lit{pThen} and \lit{pCatch} both share the same central function of waiting, if necessary, for a \lit{Promise} to settle, then branching on whether the result was a success or a failure.  We can generalize this behavior by writing a single function that accepts arguments specifying what to do in either case.  The action to do in the case of success can depend on the particular value the promise resolved with, so it should be a function accepting values of type \lit p.[Name the parameter - code calls it \lit{yes}]  The overall result [of \lit{runPromise}] must be contained in the IO monad because we can only compute it with the side effect of waiting for the \lit{Promise}[this would flow easier if I named the parameter] to settle.  [yes should match the runPromise return value so :: p -> IO ?, no more restrictions on ? => :: p -> IO a ; no must match return types therefore :: f -> IO a]
+
+\begin{code}
+runPromise :: (p -> IO a) -> (f -> IO a) -> Promise f p -> IO a
+runPromise yes no (Pending state) = do
+  result <- readMVar state
+  case result of
+    Left x -> no x
+    Right x -> yes x
+runPromise yes _ (Fulfilled x) = yes x
+runPromise _ no (Rejected x) = no x
+
+\end{code}
+[reimplement pThen, pCatch with runPromise]
+[\lit{runPromise} has the semantics of the two-arg form of JS then]
+
+[\lit{pFinally} ]
 
 [ Functor, Applicative, Monad instances; addition to the type so they don't need to be in IO]
+[ Proofs of typeclass laws (maybe put this elsewhere?) ]
 
 The Javascript standard library has several ways to combine promises in parallel in addition to the sequential combination provided by \lit{then} and \lit{catch}.
 
