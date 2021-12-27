@@ -1,4 +1,32 @@
-\documentclass[sigplan,screen]{acmart}
+\documentclass[12pt, english, letterpaper]{kuthesis}
+\usepackage{mathptmx}
+\renewcommand{\sfdefault}{lmss}
+\renewcommand{\ttdefault}{lmtt}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{verbose,tmargin=1in,bmargin=1in,lmargin=1in,rmargin=1in}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+\usepackage{color}
+\usepackage{babel}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{esint}
+\usepackage[authoryear]{natbib}
+\doublespacing
+\usepackage[unicode=true,
+ bookmarks=true,bookmarksnumbered=false,bookmarksopen=false,
+ breaklinks=true,pdfborder={0 0 0},pdfborderstyle={},backref=false,colorlinks=true]
+ {hyperref}
+\hypersetup{pdftitle={University of Kansas Thesis Template},
+ pdfauthor={Anonymous},
+ pdfsubject={A Thesis},
+ urlcolor={black},citecolor={black},allcolors={black}}
+
+
+
 \usepackage{listings}
 \usepackage{fancyvrb}
 
@@ -10,7 +38,29 @@
 \title{Promise Land}
 \author{Andrei Elliott}
 
+\priorcreds{}
+
+\dept{Electrical Engineering and Computer Science}
+\degreetitle{Master of Science}
+\papertype{Project Report}
+
+\committee {Matt Moore}{-}{-}{}{}{}{}
+\role      {Chair}{}{}{}{}{}{}
+
+
+
+\makeatletter
+\@printd@testrue
+\datedefended{-}
+\dateapproved{-}
+\makeatother
+
 \begin{document}
+
+\begin{romanpages}
+  \maketitle
+%  \tableofcontents {}
+\end{romanpages}
 
 \section{Introduction}
 One widely used model of concurrency is Javascript's Promises.  A promise works in some ways like a lazy value, in that it will at some point will contain the result of a computation, but does not stop flow of control in the current thread to compute that value.  Unlike a value with lazy semantics, a promise can immediately begin computation in a separate thread as opposed to waiting for the result to be requested by some other computation.
