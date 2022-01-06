@@ -119,8 +119,8 @@ pAllSettled = mapM $ runPromise (return . Right) (return . Left)
 
 pRace2 :: Promise f p -> Promise f p -> IO (Promise f p)
 pRace2 prA prB = do v <- newEmptyMVar
-                    ta <- forkIO $ runPromise (putMVar v . Right) (putMVar v . Left) prA
-                    tb <- forkIO $ runPromise (putMVar v . Right) (putMVar v . Left) prB
+                    ta <- forkIO $ await prA >>= putMVar v
+                    tb <- forkIO $ await prB >>= putMVar v
                     x <- takeMVar v
                     killThread ta
                     killThread tb
@@ -137,7 +137,6 @@ pRace (x:xs) = do
 
   
 
--- fmap, ap, bind for (Promise f)
 instance Functor (Promise f) where
   fmap f pr = PromiseMap f pr
 
