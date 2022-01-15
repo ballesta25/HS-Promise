@@ -63,9 +63,7 @@ runPromise yes no (Pending state) = do
     Right x -> yes x
 runPromise yes _ (Fulfilled x) = yes x
 runPromise _ no (Rejected x) = no x
-runPromise yes no (PromiseMap g pr) = do
-  pr' <- bimapPromise pr id g
-  runPromise yes no pr'
+runPromise yes no (PromiseMap g pr) = runPromise (yes . g) no pr
 runPromise yes no (PromiseMap2 g prA prB) = do
   pr' <- pThen prA $ \a ->
     pThen prB $ \b -> return $ resolve $ g a b
