@@ -111,24 +111,16 @@ pAny (x:xs) = do
   prs <- pAny xs
   pr <- pAny2 x prs
   pCatch pr (return . reject . uncurry (:))
-
-pAllSettled2 :: Promise f p -> Promise f' p' -> IO (Either f p, Either f' p')
-pAllSettled2 prA prB = do v <- newEmptyMVar
-                          forkIO $ await prA >>= putMVar v
-                          b <- await prB
-                          a <- takeMVar v
-                          return (a, b)
                           
 
-pAllSettled :: [Promise f p] -> IO [Either f p]
-pAllSettled [] = return []
-pAllSettled (pr:prs) = do v <- newEmptyMVar
-                          forkIO $ await pr >>= putMVar v
-                          xs <- pAllSettled prs
-                          x <- takeMVar v
-                          return (x:xs)
--- reference implementation: same result but runs sequentially
---pAllSettled = mapM $ runPromise (return . Right) (return . Left)
+pAllSettled :: [Promise f p] -> IO (Promise f' [Either f p])
+pAllSettled [] = return $ resolve []
+pAllSettled (x:xs) = do v <- newEmptyMVar
+                        forkIO $ await x >>= putMVar v
+                        prs <- pAllSettled xs
+                        a <- takeMVar v
+                        pThen prs $ return . resolve . (a:)
+
 
 pRace2 :: Promise f p -> Promise f p -> IO (Promise f p)
 pRace2 prA prB = do v <- newEmptyMVar
