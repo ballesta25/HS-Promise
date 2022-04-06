@@ -26,6 +26,10 @@ newPromise k = do
 -- do not export the constructor; outside this module you only get one by calling a promise callback
 data Token = MkToken
 
+-- remain Pending forever by never calling either the success handler or the failure handler
+hangForever :: IO Token
+hangForever = return MkToken
+
 resolve :: p -> Promise f p
 resolve x = Fulfilled x
 
@@ -134,7 +138,7 @@ pRace2 prA prB = do v <- newEmptyMVar
                                Right p -> resolve p
 
 pRace :: [Promise f p] -> IO (Promise f p)
-pRace [] = newPromise (\s f -> return MkToken) -- remain Pending forever by never calling either the success handler or the failure handler
+pRace [] = newPromise (\s f -> hangForever)
 pRace (x:xs) = do
   prs <- pRace xs
   pRace2 x prs
