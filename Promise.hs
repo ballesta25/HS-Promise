@@ -5,25 +5,25 @@ module Promise where
 import Control.Concurrent
 import Control.Monad
 import Data.Function
-import Data.Void
 
 data Promise :: * -> * -> * where
   Pending :: MVar (Either f p) -> Promise f p
   Fulfilled :: p -> Promise f p
   Rejected :: f -> Promise f p
   PromiseMap :: (a -> b) -> Promise f a -> Promise f b
-  PromiseMap2 ::  (a -> b -> c) -> (Promise f a) -> (Promise f b) -> (Promise f c)
-  PromiseJoin :: (Promise f (Promise f a)) -> Promise f a
-  PromiseInvert :: (Promise p f) -> Promise f p
+  PromiseMap2 ::  (a -> b -> c) -> Promise f a -> Promise f b -> Promise f c
+  PromiseJoin :: Promise f (Promise f a) -> Promise f a
+  PromiseInvert :: Promise p f -> Promise f p
 
---newPromise :: ((SuccessFun) -> (FailFun) -> IO ()) -> Promise f p
+--newPromise :: ((SuccessFun) -> (FailFun) -> ExecutorBody) -> IO (Promise f p)
 newPromise :: ((p -> IO Token) -> (f -> IO Token) -> IO Token) -> IO (Promise f p)
 newPromise k = do
   state <- newEmptyMVar
   forkIO $ fmap (const ()) $ k (fmap (const MkToken) . putMVar state . Right) (fmap (const MkToken) . putMVar state . Left)
   return (Pending state)
 
--- do not export the constructor; outside this module you only get one by calling a promise callback
+-- dummy return type for promise callbacks
+-- generally, you should not manually construct one
 data Token = MkToken
 
 -- remain Pending forever by never calling either the success handler or the failure handler
@@ -107,7 +107,6 @@ pAny2 prA prB = do v <- newEmptyMVar
                    return $ case x of
                               Left (a, b) -> reject (a, b)
                               Right p -> resolve p
---pAny2 prA prB = fmap PromiseInvert (pAll2 (PromiseInvert prA) (PromiseInvert prB))  --can't be ```fmap PromiseInvert . (pAll2 `on` PromiseInvert)``` because invert is polymorphic in `f` and `p`
 
 pAny :: [Promise f p] -> IO (Promise [f] p)
 pAny [] = return $ reject []
@@ -151,7 +150,7 @@ instance Functor (Promise f) where
 
 instance Applicative (Promise f) where
   pure x = resolve x
-  f <*> a = PromiseMap2 ($) f a
+  f <*> x = PromiseMap2 ($) f x
 
 instance Monad (Promise f) where
   return = pure
