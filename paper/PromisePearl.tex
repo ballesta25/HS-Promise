@@ -327,9 +327,12 @@ Yet another way to combine any number of promises in parallel by executing each 
 
 [\lit{pAll2} and \lit{pAll} are dual to \lit{pAny2} and \lit{pAny}; we can implement by using \lit{PromiseInvert} to switch the true and false cases of the input promises, then switching back after running them through the dual function.]
 
-\chapter*{Future Work}
+\chapter*{Conclusions and Future Work}
+\cite{madsen} performed a case study of recent questions posted to the forum StackOverflow about Javascript \lit{Promise}s.  Out of 21 questions included in the analysis, six were identified as having a root cause of an unintentional return of \lit{undefined}.  A type mismtach of this sort, between what is being returned by a function and what is expected elsewhere, is detected at compile time in Haskell, without even needed to run the code and compare actual output to expected output. A further three questions are classified with a bug type of ``Dead Promise'' meansing that a \lit{Promise} was neither resolved nore rejected, in one case on only some code paths.  Our system detects these problems, again statically at compile time, unless the user explicity creates a \lit{Token} value, perhaps by calling \lit{hangForever}.
 
-[decouple Promise monad from IO ?]
+One useful extension to this work would be to encode more information into the type system in a way that could detect additional classes of errors.  The case study from \cite{madsen} includes multiple instances of a programmer attempting to resolve a \lit{Promise} multiple times, which would not be detected by our system at compile time.  This class of error could in principle be detected with linear types.
+
+Another potential improvement would be to rearchitect the system so that \lit{Promise} is less strongly coupled to \lit{IO}.
 
 \bibliographystyle{apalike2}
 \bibliography{hs-promise}
