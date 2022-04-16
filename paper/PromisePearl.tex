@@ -79,10 +79,13 @@ We also demonstrate that \lit{Promise}s form a monad, providing a monad instance
 \chapter*{Introduction}
 One widely used model of concurrency is Javascript's Promises.  A promise works in some ways like a lazy value, in that it will at some point contain the result of a computation, but does not stop flow of control in the current thread to compute that value.  Unlike a value with lazy semantics, a promise can immediately begin computation in a separate thread as opposed to waiting for the result to be requested by some other computation.
 
-Promises are composable: using \lit{then} and \lit{catch}, we can chain a promise onto the end of a different one creating a new promise that continues computation after the first has succeeded or failed respectively.
+Promises are composable: using \lit{then} and \lit{catch}, we can chain a promise onto the end of a different one creating a new promise that continues computation after the first has succeeded or failed respectively.  Additionally, \lit{Promise}s can be combined in parallel, with a variety of distinct semantics such as waiting for the first success or for the first completion irrespective of success or failure.
 
-We build a model of promises in Haskell to compare it against other concurrency frameworks.
+\cite{madsen} note that programmers often make mistakes when writing code involving promises and there are no static checks to detect them.
+
+We build a model of \lit{Promise}s in Haskell and discuss what we gain by using a stronger type system.  In particular, we show that some classes of errors can be caught automatically by the type checker.
 \chapter*{Motivation}
+\lit{Promises} as adopted by Javascript use model initially proposed in \cite{friedman}.
 [Discussion of the adoption of the promises model in Javascript; will have to see what I can find citations for.]
 
 Promise objects are a good candidate for parameterized types: they yield a value upon success or failure, and it would be nice to be able to check statically that these values and the functions that they will be passed to all agree on the types involved.
@@ -144,7 +147,7 @@ data Promise :: * -> * -> * where
 \end{code}
 What happens if we use a type other than \lit{()} in place of \lit ? in the \lit{newPromise} function?  Say we use the type $\tau$.  The executor function passed in must evaluate to an \lit{IO $\tau$}.  If the executor ends in a call to either \lit{resolutionFunc} or \lit{rejectionFunc}, it will work exactly the same no matter what type $\tau$ represents.  When using \lit{newPromise}, we can use the same code we did before in the \lit{$\tau = $()} case.  [When \lit{ executor} doesn't contain a tail-call to one of its argument functions, the type $\tau$ matters for whether \lit{newPromise executor} typechecks; in particular, it will be accepted if and only if whatever \lit{executor} is doing \emph{other than} calling one of its callbacks yields the result type \lit{IO $\tau$}. In this situation, the resulting \lit{Promise} will never settle and any further actions chained to it will never run.  Unintentionally causing this state of affairs in that manner is a [common (?check this)] cause of errors in javascript code using \lit{Promise}s. [cite]  If we were to select a type $\tau$ that doesn't appear as the result of normal code, we could have Haskell's type system automatically detect this entire class of bugs at compile time.  One option would be Haskell's \lit{Void} type, which has no constructors.  But there may be cases where we legitimately need a \lit{Promise} that will never resolve (for example, the Javascript standard specifes that the result of calling \lit{Promise.race()} on the empty list results in such a \lit{Promise}).  Furthermore, we need to create a value of type \lit{IO $\tau$} when implementing \lit{newPromise}.  Therefore, instead of using \lit{Void}, we create a new type unused anywhere else.  [could use \lit{Void} as \lit ? instead of \lit{()} - this would cause the compiler to check that at least one of the callbacks is used - reworked into Token type.]  We can provide a value \lit{hangForever :: IO Token} representing the behavior of remaining in the \emph{pending} state indefinitely and never resolving.  This allows the user who wants that behavior to specify it while making it unlikely to occur by accident.
 
-\section*{What Next?}
+\section*{What Then?}
 Now that we can create \lit{Promise} values, the next step is to allow them to chain together.  Javascript's \lit{Promise.then()} is used to set a handler function to run after a promise completes.  Specifically, \lit{p1.then(f)} results in a new promise that will wait for the \lit{Promise} \lit{p1} to complete.  If \lit{p1} succeeds and resolves to a value \lit v, it will then call \lit{f(v)}.  The result of running the callback should be another \lit{Promise}, \lit{p2}; when it settles, the new \lit{Promise} will also settle, to the same state and value.
 [Javascript also allows the callback to return a non-\lit{Promise} value, in which case \lit{p1.then(f)} resolves to that value as soon as it's computed.  We won't implement this functionality directly
 (allowing differeng argument types would not work in Haskell's type system unless we made separate \lit{then} functions for the two variants).  However, we get to the same result by enclosing the value we would like to return in an always-successful \lit{Promise}.  Once we define a monad instance for \lit{Promise f}, we can even do so by writing \lit{return v} where \lit{v} is the value for the final promise to resolve to, which should look familiar to anyone used to the Javascript syntax!]
@@ -165,14 +168,15 @@ pThen (Fulfilled x) k = k x
 pThen (Rejected x) k = return $ reject x
 \end{code}
       
- [Note that the type signature for \lit{pThen} looks extremely similar to the type \lit{(>>=)} would have if it were to be specialized to \lit{Promise f} (\lit{(>>=) :: Promise f a -> (a -> Promise f b) -> Promise f b}).  The difference is that \lit{pThen} is entangled in the \lit{IO} monad.]
+Note that the type signature for \lit{pThen} looks extremely similar to the type \lit{(>>=)} would have if it were to be specialized to \lit{Promise f} (\lit{(>>=) :: Promise f a -> (a -> Promise f b) -> Promise f b}).  The difference is that \lit{pThen} is entangled in the \lit{IO} monad.
+
  \lit{Promise.catch()} works the same way as \lit{.then()} except that the handler is set to run only if and when the \lit{Promise} it is being chained to fails, rather then when it succeeds.  Our translation to Haskell, \lit{pCatch}, is very much like \lit{pThen} except that the code for a failed promise and a successful one have swapped places.  Its type is
  \begin{code}
 pCatch :: Promise f p
         -> (f -> IO (Promise f' p))
         -> IO (Promise f' p)
 \end{code}
-which is the same as that for \lit{pThen} except that it operates on the type \lit f, the type of failure cases, instead of \lit p, the type of success cases. [Implementation. ]
+which is the same as that for \lit{pThen} except that it operates on the type \lit f, the type of failure cases, instead of \lit p, the type of success cases.
 \begin{code}
 pCatch (Pending state) k = do
   result <- readMVar state
@@ -184,7 +188,7 @@ pCatch (Rejected x) k = k x
 \end{code}
 \lit{pCatch} is dual to \lit{pThen} in that it is identical to a \lit{pThen} that operates on \lit{Promise}s with reversed semantics for which type argument represents success and which failure.
 
-[runpromise as helper function]
+\section*{}
 \lit{pThen} and \lit{pCatch} both share the same central function of waiting, if necessary, for a \lit{Promise} to settle, then branching on whether the result was a success or a failure.  We can generalize this behavior by writing a single function that accepts arguments specifying what to do in either case.  The action to do in the case of success can depend on the particular value the promise resolved with, so it should be a function accepting values of type \lit p.[Name the parameter - code calls it \lit{yes}]  The overall result [of \lit{runPromise}] must be contained in the IO monad because we can only compute it with the side effect of waiting for the \lit{Promise}[this would flow easier if I named the parameter] to settle.  [yes should match the runPromise return value so :: p -> IO ?, no more restrictions on ? => :: p -> IO a ; no must match return types therefore :: f -> IO a]
 
 \begin{code}
@@ -205,7 +209,7 @@ pThen p k = runPromise k (return . reject) p
 
 pCatch p k = runPromise (return . resolve) k p  
 \end{code}
-[\lit{runPromise} has the semantics of the two-arg form of JS \lit{then}]
+\lit{runPromise} has the semantics of the two argument form of Javascript's \lit{Promise.then()}, adding to the chain in both the success case and the failure case. 
 
 Similarly to Javascript's \lit{Promise.finally()}, the function \lit{pFinally} runs a \lit{Promise}, then chains to the \lit{Promise} passed as its argument regardless of how the former settles.  We can implement it by generating the function \lit{const k} which ignores its input and always returns \lit{k}, the \lit{Promise} to chain to.  We then pass this constant function as both the \lit{yes} and \lit{no} arguments to \lit{runPromise}.
 
@@ -216,11 +220,10 @@ pFinally :: Promise f p
 pFinally p k = runPromise (const k) (const k) p
 \end{code}
 
-[ \lit{await}; definition, why it's useful, why use the name ]
+It is sometimes helpful to run a \lit{Promise} to completion to yield a non-\lit{Promise} value storing the results.  A function to do so has the type \lit{Promise f p -> IO (Either f p)}.  The result must be in \lit{IO} and is either a \lit{Left f} representing failure with the given reason or a \lit{Right p} representing success with the given value.  Implementing such a helper function is as simple as calling \lit{runPromise} and passing in a \lit{yes} that wraps its input in \lit{Right} and \lit{IO} and a \lit{no} that wraps in \lit{Left} and \lit{IO}.  We call this function \lit{await} in analogy to the \emph{await} keyword in Javascript.  Similarities include that it converts from a \lit{Promise} to a non-\lit{Promise} value by waiting for it to complete and that it can only be used inside the appropriate context; either the \lit{IO} monad or an \emph{async} function, as appropriate.
 
 \section*{[instances]}
-[ Functor, Applicative, Monad instances; addition to the type so they don't need to be in IO]
-[ explanation for why partially applied instances (\lit{Promise f})]
+We noted earlier that \lit{pThen} had a form reminiscent of a monadic bind operation; it is now time to demonstrate the connection more directly by writing a Monad instance for \lit{Promises}.  This will, among other things, allow us to use \emph{do notation} when code employing \lit{Promise}s.  The \lit{Monad} typeclass operates on types of kind \lit{* -> *}, i.e. type ``containers'' that are parameterized by exactly one other type.  But \lit{Promise} takes two type parameters, having kind {* -> * -> *}.  We can fix this mismatch by defining an instance for the partially applied type \lit{Promise f} that has already taken one type parameter.  Because \lit f is fixed in the instance, a given invocation of a function from one of our instances will need to keep the type of the failure value constant, even if it changes the type of the success value.\footnote{This is the reason the failure type is specified before the success type in \lit{Promise f p}: it is more straightforward to write instances where the first parameter is held constant and being able to change the success type with \lit{fmap} is more useful.}
 To define a Monad instance for \lit{Promise f}, we begin with \lit{Functor} and \lit{Applicative} instances.  For \lit{Functor (Promise f)}, we must define \lit{fmap} with type \lit{(a -> b) -> Promise f a -> Promise f b}.  \lit{fmap} must accept a function, \lit g, and a \lit{Promise}, \lit{pr}, as input and apply the \lit g to the success value of \lit{pr} if there is such a value, to yield a new \lit{Promise} (\lit{fmap} will have no effect on a \lit{Promise} that fails; we wouldn't be able to apply \lit g to the failure value since it has the wrong type).  It is simple enough to run \lit{pr} and then either apply \lit g to the result on a success or not on a failure, like so:
 \begin{code}
   fmap' :: (a - > b) -> Promise f a -> IO (Promise f b)
@@ -240,7 +243,7 @@ At this point declaring the instance is as simple as telling Haskell to convert 
 instance Functor (Promise f) where
     fmap g pr = PromiseMap g pr
 \end{code}
-[If that seemed too easy, that's because it was; we still don't have anything like \lit{fmap'} to actually apply \lit g when it needs to be applied.]  Our definition for \lit{runPromise} needs to say what to do when we try to run a \lit{PromiseMap}.  [The pattern matching here looks like \lit{runPromise yes no (PromiseMap g pr)} ]Unlike when defining \lit{fmap}, at this point, we are returning an \lit{IO Promise} so we can wait for the contained promise \lit{pr} to settle and decide whether or not to apply \lit g.  We can make a recursive call to \lit{runPromise} on \lit{pr}; we know this will terminate becuase \lit{pr} is structurally smaller than \lit{PromiseMap g pr} [, so we're fine unless we're trying to run a \lit{Promise} with an infinite number of functions mapped over it ].  The \lit{no} function is unchanged since mapping over a failed \lit{Promise} has no effect, but in the case of a successful one, we need to call \lit g before we give the result to \lit{yes}.  This means the success function for the recursive call will be \lit{yes . g}, the composition of \lit{yes} and \lit g, that applies \lit g, then gives the result directly to \lit{yes}.
+If that seemed too easy, that's because it was; we still need something like \lit{fmap'} to actually apply \lit g when it needs to be applied.  Our definition for \lit{runPromise} needs to say what to do when we try to run a \lit{PromiseMap}.  For this case, we can pattern match to \lit{runPromise yes no (PromiseMap g pr)}.  Unlike when defining \lit{fmap}, at this point, we are returning an \lit{IO Promise} so we can wait for the contained promise \lit{pr} to settle and decide whether or not to apply \lit g.  We can make a recursive call to \lit{runPromise} on \lit{pr}; we know this will terminate becuase \lit{pr} is structurally smaller than \lit{PromiseMap g pr} \footnote{for this to fail to terminate, we would need to be trying to run a \lit{Promise} with an infinite number of functions mapped over it}.  The \lit{no} function is unchanged since mapping over a failed \lit{Promise} has no effect, but in the case of a successful one, we need to call \lit g before we give the result to \lit{yes}.  This means the success function for the recursive call will be \lit{yes . g}, the composition of \lit{yes} and \lit g, that applies \lit g, then gives the result directly to \lit{yes}.
 \begin{code}
 runPromise yes no (PromiseMap g pr) = runPromise (yes . g) no pr
 \end{code}
@@ -265,8 +268,15 @@ runPromise yes no (PromiseMap2 g prA prB) = do
 \end{code}
 Note that, while using a \lit{do} block here may look circular since we haven't yet defined the monad instance for \lit{Promise f}, this \lit{do} is in the \lit{IO} monad rather than \lit{Promise}.
 
-[Monad instance]
-[\lit{join} characterization instead of \lit{>>=}: collapse a two-layer \lit{Promise} into a single layer]
+The instance for \lit{Monad (Promise f)} requires \lit{return :: a -> Promise f a} that puts a value into a neutral context; this can be the same as \lit{pure} from \lit{Applicative}.  The other function required to declare a Monad instance is \lit{(>>=)} (pronounced ``bind'') and, when specialized to \lit{Promise f}, has the type \lit{Promise f a -> (a -> Promise f b) -> Promise f b}.  That is, it accepts a \lit{Promise}, \lit p, as well as a function, \lit k, that converts from a plain value of the type of a sucessful result from \lit p.  Then, \lit{(>>=)} applies \lit k to \lit p as though \lit p were a plain value instead of a \lit{Promise}.  The type of \lit{(>>=)} is exactly that of \lit{pThen} except that it references unadorned \lit{Promise}s in the places where \lit{pThen} had \lit{IO Promise}s.  As will be familiar by now, we must add a new \lit{Promsie} constructor so we can delay execution until \lit{runPromise}.  In this case, we can add
+  \begin{code}
+    PromiseJoin :: Promise f (Promise f a) -> Promise f a
+  \end{code}
+  which collapses a two-layer \lit{Promise} into a single layer.  Join is an equivalent characterization to \lit{(>>=)} as we can write
+  \begin{code}
+    p >>= k = PromiseJoin (fmap k p)
+  \end{code}
+  using \lit{fmap} to apply \lit k to \lit p before returning to a single layer of \lit{Promise} with \lit{join}.
 
 [ Proofs of typeclass laws (maybe put this elsewhere?) ]
 
@@ -313,12 +323,15 @@ pRace (x:xs) = do
   pRace2 x prs
 \end{code}
 
-[implementation of JS's Promise.any(iterable)] Yet another way to combine any number of promises in parallel by executing each simultaneously is \lit{Promise.any(iterable)}.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.  To implement this, let's again start with a binary version that combines exactly two promises in this way.  [ type signature \lit{pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)} ] [Note that this type signature is slightly more general than will be allowed by the \(n\)-ary version; in particular, the failure types of the two Promises can be different here, where in \lit{pAny} they will need to be the same so they can be contained in the same Haskell list.]  We still need an MVar to store the value of a success from either promise A or promise B, but dealing with a failure is somewhat more complicated since one failure isn't enough to end the computation, but we still need to track it so that we know to end if both branches end in failure. [need communication between the forked threads that doesn't interfere with the MVar holding successful results, => second \lit{MVar} that the main thread doesn't touch at all.  One fork writes to the error MVar, while the other waits to read from it after completion.]
+Yet another way to combine any number of promises in parallel by executing each simultaneously is \lit{Promise.any(iterable)}.  The result is a promise that immediately resolves to the value of the first input promise to successfully complete.  If all of the given promises fail, it gives a list of every failure value.  To implement this, let's again start with a binary version that combines exactly two promises in this way.  The type signature for the binary variation is \lit{pAny2 :: Promise f p -> Promise f' p -> IO (Promise (f, f') p)}.  This type signature is slightly more general than will be allowed by the \(n\)-ary version; in particular, the failure types of the two Promises can be different here, where in \lit{pAny} they will need to be the same so they can be contained in the same Haskell list.  We still need an MVar to store the value of a success from either promise A or promise B, but dealing with a failure is somewhat more complicated since one failure isn't enough to end the computation, but we still need to track it so that we know to end if both branches end in failure.  We need communication between the forked threads that doesn't interfere with the MVar holding successful results, hence a second \lit{MVar} that the main thread doesn't touch at all.  One fork writes to the error MVar, while the other waits to read from it after completion.
 
 [\lit{pAll2} and \lit{pAll} are dual to \lit{pAny2} and \lit{pAny}; we can implement by using \lit{PromiseInvert} to switch the true and false cases of the input promises, then switching back after running them through the dual function.]
 
 \chapter*{Future Work}
 
 [decouple Promise monad from IO ?]
+
+\bibliographystyle{apalike2}
+\bibliography{hs-promise}
 
 \end{document}
