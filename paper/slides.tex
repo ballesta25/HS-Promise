@@ -115,6 +115,24 @@
 
 \end{frame}
 
+\begin{frame}
+  \frametitle{Promise Timing}
+  \begin{center}
+    \begin{tikzpicture}
+      \path (6,-3) edge[->] node[above] {time} ++(1.5,0);
+      \path (0,0) node[draw, thick, minimum height=1.5em] (new) {new Promise} edge[->] ++(8,0);
+      \path (2,-1) node[draw, thick, minimum height=1.5em] (run) {get data};
+      \draw[->] (new) |- (run);
+      \pause
+      \path (5,-1) node[draw, thick, minimum height=1.5em] (use) {use data};
+      \draw[->] (run) edge[->] node[above]{.then()}  (use);
+      \pause
+      \path (7,0) node[draw, thick, minimum height=1.5em,fill=white] (await) {await};
+      \draw[->] (use) -| (await);
+    \end{tikzpicture}
+  \end{center}
+\end{frame}
+
 \subsection{Haskell}
 
 \begin{frame}
@@ -303,13 +321,16 @@
     \pause\item Madsen et al. (2017) case study
     \begin{itemize}
       \pause\item 21 Stack Overflow questions about JS Promises
-      \pause\item 6: unintentional \lit{undefined} \pause {\huge \checkmark}
-      \pause\item 3: dead Promise \only<11>{{\huge \checkmark}}
+      \begin{itemize}
+      \pause\item 6: unintentional \lit{undefined} \pause {\huge
+          \checkmark} \pause\item 3: dead Promise \only<11>{{\huge
+            \checkmark}}
       \begin{itemize}
         \pause\item executor never calls either callback
         \pause\item Promise is \emph{Pending} forever
         \pause\item catch these by updating the type of \lit{newPromise}
       \end{itemize}
+    \end{itemize}
     \end{itemize}
     \pause\item\item\lit{((p -> IO Token) -> (f -> IO Token) -> IO Token)\\
         \qquad  -> IO (Promise f p)}
