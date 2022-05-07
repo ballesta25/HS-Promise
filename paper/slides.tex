@@ -176,7 +176,7 @@
   \begin{itemize}
     \pause\item \lit{return = Right}
     \pause\item \lit{(Right x) >>= f = f x}
-    \item \lit{(Left y) >>= f = y}
+    \item \lit{(Left y) \ >>= f = (Left y)}
   \end{itemize}
   \end{itemize}
 \end{frame}
@@ -224,7 +224,7 @@
 \begin{frame}
   \frametitle\insertsubsection
   \begin{itemize}
-    \pause\item Store an \lit{MVar (Either f p)}
+    \pause\item store an \lit{MVar (Either f p)}
     \pause\item \lit{data Promise ::\ * -> * -> * where\\
       \qquad\  Pending ::\ MVar (Either f p) -> Promise f p}
     \pause\item\item JS version accepts an \emph{executor} function
