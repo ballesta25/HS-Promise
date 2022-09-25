@@ -59,7 +59,7 @@
 \makeatletter
 \@printd@testrue
 \datedefended{Friday May 6, 2022}
-\dateapproved{\ }
+\dateapproved{Friday May 6, 2022}
 \makeatother
 
 \begin{document}
@@ -119,7 +119,7 @@ In order to implement \textsf{Promises}, we need asynchronous action.  To accomp
 \end{itemize}
 \section*{Promises}
 
-A \textsf{Promise} represents a unit of computation to be performed asynchronously.  When one is created, the work to be done is specified as a function to be executed.  This computation occurs without interrupting the control flow at the site that created the \textsf{Promise}.  Since the work represented by a \textsf{Promise} may not have been completed yet, any values that result can't be used directly.  Instead, we can \emph{chain} \textsf{Promises} by using \lit{then} to schedule code that depends on the result, creating a new \textsf{Promise} representing the initial work followed by the additional code.  A \textsf{Promise} that succeeds will execute code chained after it with \lit{then}; one that fail will execute any that was chained after it with \lit{catch}.  In either case, this will happen one the initial \textsf{Promise} has finished running and \lit{then} or \lit{catch} has been called, regarless of which order those two events happen in.
+A \textsf{Promise} represents a unit of computation to be performed asynchronously.  When one is created, the work to be done is specified as a function to be executed.  This computation occurs without interrupting the control flow at the site that created the \textsf{Promise}.  Since the work represented by a \textsf{Promise} may not have been completed yet, any values that result can't be used directly.  Instead, we can \emph{chain} \textsf{Promises} by using \lit{then} to schedule code that depends on the result, creating a new \textsf{Promise} representing the initial work followed by the additional code.  A \textsf{Promise} that succeeds will execute code chained after it with \lit{then}; one that fails will execute any that was chained after it with \lit{catch}.  In either case, this will happen one the initial \textsf{Promise} has finished running and \lit{then} or \lit{catch} has been called, regardless of which order those two events happen in.
 
 \textsf{Promises} can be in one of three states: \emph{pending}, \emph{fulfilled}, or \emph{rejected}.  The \emph{pending} state represents a \textsf{Promise} that is still running.  A \textsf{Promise} that has completed with a success value is in the \emph{fulfilled} state; the process of moving from \emph{pending} to \emph{fulfilled} is referred to as the \textsf{Promise} \emph{resolving}.  The state for a failed \textsf{Promise} is called \emph{rejected} and to \emph{reject} a \textsf{Promise} is to move it from the \emph{pending} state to the \emph{rejected} state.  For a \textsf{Promise} to \emph{settle}, it moves from \emph{pending} to either \emph{fulfilled} or \emph{rejected}.  \Cref{fig:states} summarizes this terminology.
 
